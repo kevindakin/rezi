@@ -306,6 +306,71 @@ function copyright() {
   }
 }
 
+const initPlausibleEvents = () => {
+  if (window.reziCtaTrackingInitialized) return;
+  window.reziCtaTrackingInitialized = true;
+
+  // Most specific first — first match wins.
+  const sources = [
+    { selector: "[data-rich-component]", name: null },         // injected library CTAs
+    { selector: ".upload_drop_wrap",     name: "cta-upload" }, // upload zone elsewhere
+    { selector: ".blog_post_cta",        name: "sidebar-cta" },
+    { selector: ".card_cta_wrap",        name: "cta" },
+    { selector: ".footer_cta_wrap",      name: "footer-cta" },
+    { selector: ".nav_wrap",             name: "nav" }
+  ];
+
+  const resolve = (el) => {
+    if (!el || !el.closest) return null;
+
+    for (const source of sources) {
+      const wrap = el.closest(source.selector);
+      if (!wrap) continue;
+
+      // Ignore the hidden library sources.
+      if (wrap.closest('[data-rich-components="components"]')) return null;
+
+      return {
+        element: wrap,
+        name: source.name || wrap.getAttribute("data-rich-component") || "unknown"
+      };
+    }
+
+    return null;
+  };
+
+  const send = (hit, action) => {
+    if (!hit || typeof window.plausible !== "function") return;
+
+    const context = hit.element.closest('[data-rich-components="rich"], [data-toc="rich"]')
+      ? "in-article"
+      : "page";
+
+    window.plausible("CTA Click", {
+      props: { cta: hit.name, action: action, context: context }
+    });
+  };
+
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest) return;
+
+    const card = e.target.closest(".upload_drop_card");
+    if (card) {
+      send(resolve(card), "upload-open");
+      return;
+    }
+
+    const link = e.target.closest('a[href*="app.rezi.ai/signup"]');
+    if (link) send(resolve(link), "signup");
+  });
+
+  document.addEventListener("change", (e) => {
+    if (!e.target.matches || !e.target.matches('input[type="file"]')) return;
+    if (!e.target.files || !e.target.files.length) return;
+    send(resolve(e.target), "upload-file");
+  });
+};
+
 // MOBILE MENU
 
 function mobileMenu() {
@@ -392,6 +457,7 @@ document.addEventListener("DOMContentLoaded", function () {
   stickyBars();
   navDropdown();
   copyright();
+  initPlausibleEvents();
 
   gsap.matchMedia().add("(max-width: 991px)", () => {
     mobileMenu();
